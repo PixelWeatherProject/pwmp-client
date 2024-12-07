@@ -10,8 +10,7 @@ use pwmp_msg::{
     mac::Mac,
     request::Request,
     response::Response,
-    settings::SettingName,
-    settings::SettingValue,
+    settings::NodeSettings,
     Message,
 };
 use std::{
@@ -75,22 +74,18 @@ impl PwmpClient {
         response == Response::Pong
     }
 
-    /// Get values of multiple settings.
+    /// Get the node's settings.
     ///
     /// # Errors
     /// Generic I/O.
     #[allow(clippy::items_after_statements)]
-    pub fn get_settings(&mut self, settings: &[SettingName]) -> Result<Box<[SettingValue]>> {
-        self.send_request(Request::GetSettings(settings.into()))?;
+    pub fn get_settings(&mut self) -> Result<NodeSettings> {
+        self.send_request(Request::GetSettings)?;
         let response = self.await_response()?;
 
         let Response::Settings(values) = response else {
             return Err(Error::UnexpectedVariant);
         };
-
-        if values.len() != settings.len() {
-            return Err(Error::MalformedResponse);
-        }
 
         Ok(values)
     }
