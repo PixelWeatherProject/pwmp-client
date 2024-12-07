@@ -1,0 +1,15 @@
+[package]
+name = "pwmp-client"
+version = "2.0.0"
+edition = "2021"
+authors = ["Fábián Varga <23280129+br0kenpixel@users.noreply.github.com>"]
+description = "The PixelWeather Messaging Protocol client."
+rust-version = "1.83"
+homepage = "https://github.com/PixelWeatherProject"
+license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/PixelWeatherProject/pwmp-client"
+
+[dependencies]
+thiserror = "2.0.4"
+pwmp-msg = { git = "ssh://git@github.com/PixelWeatherProject/pwmp-msg.git" }

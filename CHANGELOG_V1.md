@@ -1,0 +1,5 @@
+- Simplified `get_settings()` (removed stack copying)
+- Created a constant for maximum notification length
+- Moved all constants to a `consts` module
+- Added documentation to private methods
+- Added documentation to the destructor of the client
