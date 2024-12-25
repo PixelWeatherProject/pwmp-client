@@ -11,5 +11,5 @@ readme = "README.md"
 repository = "https://github.com/PixelWeatherProject/pwmp-client"
 
 [dependencies]
-thiserror = "2.0.4"
+thiserror = "2.0.9"
 pwmp-msg = { git = "ssh://git@github.com/PixelWeatherProject/pwmp-msg.git" }
