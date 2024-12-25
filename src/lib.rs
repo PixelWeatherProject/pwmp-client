@@ -11,6 +11,7 @@ use pwmp_msg::{
     request::Request,
     response::Response,
     settings::NodeSettings,
+    version::Version,
     Message,
 };
 use std::{
@@ -143,45 +144,28 @@ impl PwmpClient {
     ///
     /// # Errors
     /// Generic I/O or if an unexpected response variant is received.
-    pub fn check_os_update(
-        &mut self,
-        version_major: u8,
-        version_middle: u8,
-        version_minor: u8,
-    ) -> Result<ota::UpdateStatus> {
-        self.send_request(Request::UpdateCheck(
-            version_major,
-            version_middle,
-            version_minor,
-        ))?;
+    pub fn check_os_update(&mut self, current_version: Version) -> Result<ota::UpdateStatus> {
+        self.send_request(Request::UpdateCheck(current_version))?;
 
         match self.await_response()? {
             Response::FirmwareUpToDate => Ok(ota::UpdateStatus::UpToDate),
-            Response::UpdateAvailable(major, middle, minor) => {
-                Ok(ota::UpdateStatus::Available(major, middle, minor))
-            }
+            Response::UpdateAvailable(version) => Ok(ota::UpdateStatus::Available(version)),
             _ => Err(Error::UnexpectedVariant),
         }
     }
 
-    /// Request the latest firmware update from the server.
-    /// Optionally, a chunk size can be specified. This will be the *maximum* length of chunks retrieved from [`next_update_chunk()`](Self::next_update_chunk).
-    ///
-    /// # Errors
-    /// Generic I/O
-    pub fn request_update(&mut self, chunk_size: Option<usize>) -> Result<()> {
-        self.send_request(Request::Update {
-            chunk_size: chunk_size.unwrap_or(UPDATE_PART_SIZE),
-        })?;
-        self.await_ok()
-    }
-
     /// Request the next chunk of a firmware update.
+    /// Optionally, a chunk size can be specified. This will be the *maximum* length of the received chunk.
+    ///
+    /// # Defaults
+    /// If no chunk size is specified, a default value will be used. Check [`UPDATE_PART_SIZE`](UPDATE_PART_SIZE)
     ///
     /// # Errors
     /// Generic I/O
-    pub fn next_update_chunk(&mut self) -> Result<Option<Box<[u8]>>> {
-        self.send_request(Request::NextUpdateChunk)?;
+    pub fn next_update_chunk(&mut self, chunk_size: Option<usize>) -> Result<Option<Box<[u8]>>> {
+        self.send_request(Request::NextUpdateChunk(
+            chunk_size.unwrap_or(UPDATE_PART_SIZE),
+        ))?;
         let response = self.await_response()?;
 
         match response {
@@ -191,21 +175,13 @@ impl PwmpClient {
         }
     }
 
-    /// Report malfunctioning firmware and blacklist it for the current node.
+    /// Report the last firmware update as either successfull, or failed due to malfunctioning firmware.
+    /// If a firmware is reported as "bad", it'll be blacklisted for the current node.
     ///
     /// # Errors
     /// Generic I/O
-    pub fn report_firmware(
-        &mut self,
-        version_major: u8,
-        version_middle: u8,
-        version_minor: u8,
-    ) -> Result<()> {
-        self.send_request(Request::ReportBadFirmware(
-            version_major,
-            version_middle,
-            version_minor,
-        ))?;
+    pub fn report_firmware(&mut self, ok: bool) -> Result<()> {
+        self.send_request(Request::ReportFirmwareUpdate(ok))?;
         self.await_ok()
     }
 
