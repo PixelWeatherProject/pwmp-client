@@ -33,7 +33,10 @@ mod consts;
 
 #[allow(clippy::doc_markdown)]
 /// PixelWeather Messaging Protocol Client.
-pub struct PwmpClient(TcpStream);
+pub struct PwmpClient {
+    stream: TcpStream,
+    buffer: [u8; RCV_BUFFER_SIZE],
+}
 
 impl PwmpClient {
     /// Create a new client by connecting to a PWMP server.
@@ -55,7 +58,10 @@ impl PwmpClient {
         socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
         socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
 
-        let mut client = Self(socket);
+        let mut client = Self {
+            stream: socket,
+            buffer: [0; RCV_BUFFER_SIZE],
+        };
         client.send_greeting(mac)?;
 
         Ok(client)
@@ -68,7 +74,7 @@ impl PwmpClient {
             return false;
         }
 
-        let Ok(response) = self.await_response() else {
+        let Ok(response) = self.await_response(None) else {
             return false;
         };
 
@@ -82,7 +88,7 @@ impl PwmpClient {
     #[allow(clippy::items_after_statements)]
     pub fn get_settings(&mut self) -> Result<NodeSettings> {
         self.send_request(Request::GetSettings)?;
-        let response = self.await_response()?;
+        let response = self.await_response(None)?;
 
         let Response::Settings(values) = response else {
             return Err(Error::UnexpectedVariant);
@@ -147,7 +153,7 @@ impl PwmpClient {
     pub fn check_os_update(&mut self, current_version: Version) -> Result<ota::UpdateStatus> {
         self.send_request(Request::UpdateCheck(current_version))?;
 
-        match self.await_response()? {
+        match self.await_response(None)? {
             Response::FirmwareUpToDate => Ok(ota::UpdateStatus::UpToDate),
             Response::UpdateAvailable(version) => Ok(ota::UpdateStatus::Available(version)),
             _ => Err(Error::UnexpectedVariant),
@@ -163,10 +169,11 @@ impl PwmpClient {
     /// # Errors
     /// Generic I/O
     pub fn next_update_chunk(&mut self, chunk_size: Option<usize>) -> Result<Option<Box<[u8]>>> {
-        self.send_request(Request::NextUpdateChunk(
-            chunk_size.unwrap_or(UPDATE_PART_SIZE),
-        ))?;
-        let response = self.await_response()?;
+        let chunk_size = chunk_size.unwrap_or(UPDATE_PART_SIZE);
+        self.send_request(Request::NextUpdateChunk(chunk_size))?;
+
+        let mut buffer = vec![0; chunk_size + 32 /* Message overhead */];
+        let response = self.await_response(Some(&mut buffer))?;
 
         match response {
             Response::UpdatePart(chunk) => Ok(Some(chunk)),
@@ -199,8 +206,8 @@ impl PwmpClient {
     /// # Errors
     /// Generic I/O.
     fn send_request(&mut self, req: Request) -> Result<()> {
-        self.0.write_all(&Message::Request(req).serialize())?;
-        self.0.flush()?;
+        self.stream.write_all(&Message::Request(req).serialize())?;
+        self.stream.flush()?;
 
         Ok(())
     }
@@ -209,11 +216,17 @@ impl PwmpClient {
     ///
     /// # Errors
     /// Generic I/O.
-    fn await_response(&mut self) -> Result<Response> {
-        let mut buf = [0; RCV_BUFFER_SIZE];
-        let read = self.0.read(&mut buf)?;
+    fn await_response(&mut self, buffer: Option<&mut [u8]>) -> Result<Response> {
+        let buffer = match buffer {
+            Some(ext_buf) => ext_buf,
+            None => {
+                self.buffer.fill(0);
+                &mut self.buffer
+            }
+        };
+        let read = self.stream.read(buffer)?;
 
-        let message = Message::deserialize(&buf[..read]).ok_or(Error::MessageParse)?;
+        let message = Message::deserialize(&buffer[..read]).ok_or(Error::MessageParse)?;
         message.as_response().ok_or(Error::NotResponse)
     }
 
@@ -222,7 +235,7 @@ impl PwmpClient {
     /// # Errors
     /// Generic I/O.
     fn await_ok(&mut self) -> Result<()> {
-        let response = self.await_response()?;
+        let response = self.await_response(None)?;
 
         match response {
             Response::Ok => Ok(()),
@@ -236,7 +249,7 @@ impl PwmpClient {
     /// # Errors
     /// Generic I/O.
     fn connected(&self) -> bool {
-        if let Ok(amount) = self.0.peek(&mut []) {
+        if let Ok(amount) = self.stream.peek(&mut []) {
             return amount > 0;
         }
 
