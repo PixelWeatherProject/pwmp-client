@@ -217,13 +217,10 @@ impl PwmpClient {
     /// # Errors
     /// Generic I/O.
     fn await_response(&mut self, buffer: Option<&mut [u8]>) -> Result<Response> {
-        let buffer = match buffer {
-            Some(ext_buf) => ext_buf,
-            None => {
-                self.buffer.fill(0);
-                &mut self.buffer
-            }
-        };
+        let buffer = buffer.unwrap_or_else(|| {
+            self.buffer.fill(0);
+            &mut self.buffer
+        });
         let read = self.stream.read(buffer)?;
 
         let message = Message::deserialize(&buffer[..read]).ok_or(Error::MessageParse)?;
