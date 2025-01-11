@@ -3,3 +3,4 @@
 - Moved all constants to a `consts` module
 - Added documentation to private methods
 - Added documentation to the destructor of the client
+- Added support for handling OTA updates
