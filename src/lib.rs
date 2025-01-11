@@ -137,12 +137,15 @@ impl PwmpClient {
     ///
     /// # Errors
     /// Generic I/O.
-    pub fn send_notification(&mut self, content: &str) -> Result<()> {
+    pub fn send_notification<S: Into<Box<str>>>(&mut self, content: S) -> Result<()> {
+        // This should not allocate if `S` was a `String` *AND* it does *NOT* have excess capacity.
+        let message: Box<str> = content.into();
+
         assert!(
-            content.len() <= NOTIFICATION_MAX_LEN,
+            message.len() <= NOTIFICATION_MAX_LEN,
             "Message content too large"
         );
-        self.send_request(Request::SendNotification(content.into()))?;
+        self.send_request(Request::SendNotification(message))?;
         self.await_ok()
     }
 
