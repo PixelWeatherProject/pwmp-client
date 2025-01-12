@@ -12,4 +12,4 @@ repository = "https://github.com/PixelWeatherProject/pwmp-client"
 
 [dependencies]
 thiserror = "2.0.11"
-pwmp-msg = { git = "ssh://git@github.com/PixelWeatherProject/pwmp-msg.git" }
+pwmp-msg = { path = "../pwmp-msg" }
