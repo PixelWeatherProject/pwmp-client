@@ -86,7 +86,7 @@ impl PwmpClient {
     /// # Errors
     /// Generic I/O.
     #[allow(clippy::items_after_statements)]
-    pub fn get_settings(&mut self) -> Result<NodeSettings> {
+    pub fn get_settings(&mut self) -> Result<Option<NodeSettings>> {
         self.send_request(Request::GetSettings)?;
         let response = self.await_response(None)?;
 
