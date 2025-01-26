@@ -4,3 +4,4 @@
 - Added documentation to private methods
 - Added documentation to the destructor of the client
 - Added support for handling OTA updates
+- Simplified `send_notification()` API
