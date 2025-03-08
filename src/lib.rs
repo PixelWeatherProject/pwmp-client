@@ -16,7 +16,7 @@ use pwmp_msg::{
 };
 use std::{
     io::{Read, Write},
-    net::{TcpStream, ToSocketAddrs},
+    net::{Shutdown, TcpStream, ToSocketAddrs},
     time::Duration,
 };
 
@@ -258,6 +258,9 @@ impl Drop for PwmpClient {
     fn drop(&mut self) {
         // Send the bye message
         let _ = self.send_request(Request::Bye);
+
+        // Shut down the socket
+        let _ = self.stream.shutdown(Shutdown::Both);
 
         // Wait until we disconnect
         while self.connected() {}
