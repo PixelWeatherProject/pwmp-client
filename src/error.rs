@@ -4,8 +4,11 @@ use std::io;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Generic I/O error.
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
+    #[error("I/O error: [{}] {inner}", inner.kind())]
+    Io {
+        #[from]
+        inner: io::Error,
+    },
 
     /// Server rejected the client.
     #[error("server rejected")]
