@@ -13,7 +13,7 @@ pub const READ_TIMEOUT: Duration = Duration::from_secs(4);
 pub const WRITE_TIMEOUT: Duration = Duration::from_secs(4);
 
 /// Maximum length of notification contents.
-pub const NOTIFICATION_MAX_LEN: usize = 64;
+pub const NOTIFICATION_MAX_LEN: usize = 1024;
 
 /// Default chunk size for upgrade parts.
 pub const UPDATE_PART_SIZE: usize = 1024; // 1 kB
