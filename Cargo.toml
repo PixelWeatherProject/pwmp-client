@@ -12,4 +12,4 @@ repository = "https://github.com/PixelWeatherProject/pwmp-client"
 
 [dependencies]
 thiserror = "2.0.11"
-pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", tag = "v2.0.1" }
+pwmp-msg = { path = "/home/br0kenpixel/Documents/C Projects/Rust/pwmp-new-stack/pwmp-msg" }
