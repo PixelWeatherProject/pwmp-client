@@ -10,23 +10,23 @@ pub enum Error {
         inner: io::Error,
     },
 
-    /// Server rejected the client.
-    #[error("server rejected")]
-    Rejected,
+    /// Handshake failed.
+    #[error("Handshake authentication failed: {0:?}")]
+    HandshakeFailed(Option<Box<str>>),
 
     /// Expected a response message, got request instead.
-    #[error("not response")]
+    #[error("Expected response, got request instead")]
     NotResponse,
 
     /// Expected a request message, got response instead.
-    #[error("parse")]
+    #[error("Failed to de/serialize the message")]
     MessageParse,
 
     /// Unexpected variant of a response or request.
-    #[error("bad variant")]
+    #[error("Unexpected request/response variant")]
     UnexpectedVariant,
 
     /// Malformed response.
-    #[error("malformed response")]
+    #[error("Malformed response")]
     MalformedResponse,
 }
