@@ -55,6 +55,7 @@ impl PwmpClient {
         let addr = addr.to_socket_addrs()?.next().unwrap();
         let socket = TcpStream::connect_timeout(&addr, connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
 
+        socket.nodelay()?;
         socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
         socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
 
