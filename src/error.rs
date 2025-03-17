@@ -10,6 +10,10 @@ pub enum Error {
         inner: io::Error,
     },
 
+    /// Invalid socket address.
+    #[error("Invalid socket address")]
+    InvalidAddr,
+
     /// Server rejected the client.
     #[error("server rejected")]
     Rejected,

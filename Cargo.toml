@@ -13,3 +13,4 @@ repository = "https://github.com/PixelWeatherProject/pwmp-client"
 [dependencies]
 thiserror = "2.0.11"
 pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", tag = "v2.0.1" }
+message-io = { version = "0.18.3", default-features = false, features = ["tcp"] }

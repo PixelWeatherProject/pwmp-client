@@ -4,6 +4,11 @@ use consts::{
     WRITE_TIMEOUT,
 };
 use error::Error;
+use message_io::{
+    events::EventReceiver,
+    network::{Endpoint, RemoteAddr, Transport},
+    node::{self, NodeHandler, NodeListener, NodeTask, StoredNodeEvent},
+};
 pub use pwmp_msg;
 use pwmp_msg::{
     aliases::{AirPressure, BatteryVoltage, Humidity, Rssi, Temperature},
@@ -16,7 +21,7 @@ use pwmp_msg::{
 };
 use std::{
     io::{Read, Write},
-    net::{Shutdown, TcpStream, ToSocketAddrs},
+    net::{Shutdown, SocketAddr, SocketAddrV4, TcpStream, ToSocketAddrs},
     time::Duration,
 };
 
@@ -34,8 +39,10 @@ mod consts;
 #[allow(clippy::doc_markdown)]
 /// PixelWeather Messaging Protocol Client.
 pub struct PwmpClient {
-    stream: TcpStream,
-    buffer: [u8; RCV_BUFFER_SIZE],
+    handler: NodeHandler<()>,
+    server: Endpoint,
+    task: NodeTask,
+    receiver: EventReceiver<StoredNodeEvent<()>>,
 }
 
 impl PwmpClient {
@@ -47,24 +54,23 @@ impl PwmpClient {
     /// if a generic I/O error occurred.
     pub fn new<A: ToSocketAddrs>(
         addr: A,
-        mac: Mac,
         connect_timeout: Option<Duration>,
         read_timeout: Option<Duration>,
         write_timeout: Option<Duration>,
     ) -> Result<Self> {
-        let addr = addr.to_socket_addrs()?.next().unwrap();
-        let socket = TcpStream::connect_timeout(&addr, connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
+        let (handler, listener) = node::split();
+        let sock_addr = addr.to_socket_addrs()?.next().ok_or(Error::InvalidAddr)?;
+        let addr = RemoteAddr::Socket(sock_addr);
 
-        socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
-        socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
+        let (server, _) = handler.network().connect_sync(Transport::FramedTcp, addr)?;
+        let (task, receiver) = listener.enqueue();
 
-        let mut client = Self {
-            stream: socket,
-            buffer: [0; RCV_BUFFER_SIZE],
-        };
-        client.send_greeting(mac)?;
-
-        Ok(client)
+        Ok(Self {
+            handler,
+            server,
+            task,
+            receiver,
+        })
     }
 
     /// Try to ping the server. Returns whether the server responded correctly.
