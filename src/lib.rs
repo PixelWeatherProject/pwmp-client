@@ -5,6 +5,7 @@ use consts::{
     UPDATE_PART_SIZE, WRITE_TIMEOUT,
 };
 use error::Error;
+use libc::{linger, socklen_t, SOL_SOCKET, SO_KEEPALIVE, SO_LINGER, TCP_NODELAY};
 pub use pwmp_msg;
 use pwmp_msg::{
     aliases::{AirPressure, BatteryVoltage, Humidity, Rssi, Temperature},
@@ -15,10 +16,13 @@ use pwmp_msg::{
     version::Version,
     Message, MsgId,
 };
-use socket2::{Domain, Protocol, Socket, Type};
 use std::{
-    io::{Read, Write},
-    net::{Shutdown, ToSocketAddrs},
+    any::Any,
+    ffi::{c_int, c_void},
+    io::{self, Read, Write},
+    mem,
+    net::{Shutdown, TcpStream, ToSocketAddrs},
+    os::fd::AsRawFd,
     time::Duration,
 };
 
@@ -38,7 +42,7 @@ mod consts;
 /// PixelWeather Messaging Protocol Client.
 pub struct PwmpClient {
     /// Handle for the actual TCP stream.
-    stream: Socket,
+    stream: TcpStream,
 
     /// Default buffer used to receive messages.
     buffer: [u8; RCV_BUFFER_SIZE],
@@ -70,12 +74,12 @@ impl PwmpClient {
         A: ToSocketAddrs,
         G: Fn() -> MsgId,
     {
-        let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
+        let socket = TcpStream::connect_timeout(addr, connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
 
         // Set the options
-        socket.set_nodelay(true)?;
-        socket.set_keepalive(true)?;
-        socket.set_linger(Some(Duration::from_secs(1)))?;
+        setsockopt(&socket, TCP_NODELAY)?;
+        setsockopt(&socket, SO_KEEPALIVE)?;
+        setsockopt(&socket, SO_LINGER)?;
         socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
         socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
 
@@ -369,4 +373,24 @@ impl Drop for PwmpClient {
         // Wait until we disconnect
         while self.connected() {}
     }
+}
+
+fn setsockopt(fd: &TcpStream, opt: c_int, value: Option<Box<dyn Any>>) -> io::Result<()> {
+    let optval: c_void = value.unwrap_or_else(|| Box::new(1)).as_ref() as c_void;
+
+    let err = unsafe {
+        libc::setsockopt(
+            fd.as_raw_fd(),
+            libc::SOL_SOCKET,
+            opt,
+            &optval as *const _ as *const c_void,
+            mem::size_of_val(&optval) as socklen_t,
+        )
+    };
+
+    if err == 0 {
+        return Ok(());
+    }
+
+    return Err(io::Error::last_os_error());
 }
