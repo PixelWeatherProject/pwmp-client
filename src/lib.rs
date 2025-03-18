@@ -264,6 +264,9 @@ impl PwmpClient {
         // TODO: Endianness should be handled internally, but this should be checked!
         self.stream.write_all(&raw)?;
 
+        // Flush the buffer.
+        self.stream.flush()?;
+
         // Cache the ID.
         self.cache_id(msg.id());
 
