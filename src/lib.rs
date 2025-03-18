@@ -1,7 +1,8 @@
 #![allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
+use arrayref::array_ref;
 use consts::{
-    CONNECT_TIMEOUT, NOTIFICATION_MAX_LEN, RCV_BUFFER_SIZE, READ_TIMEOUT, UPDATE_PART_SIZE,
-    WRITE_TIMEOUT,
+    CONNECT_TIMEOUT, ID_CACHE_SIZE, NOTIFICATION_MAX_LEN, RCV_BUFFER_SIZE, READ_TIMEOUT,
+    UPDATE_PART_SIZE, WRITE_TIMEOUT,
 };
 use error::Error;
 pub use pwmp_msg;
@@ -14,13 +15,16 @@ use pwmp_msg::{
     version::Version,
     Message,
 };
+use socket2::{Domain, Protocol, Socket, Type};
 use std::{
     io::{Read, Write},
-    net::{Shutdown, TcpStream, ToSocketAddrs},
+    net::{Shutdown, ToSocketAddrs},
     time::Duration,
 };
 
 pub(crate) type Result<T> = ::std::result::Result<T, Error>;
+type MsgLength = u32;
+type MsgId = u32;
 
 /// Contains the [`Error`] type.
 pub mod error;
@@ -34,8 +38,19 @@ mod consts;
 #[allow(clippy::doc_markdown)]
 /// PixelWeather Messaging Protocol Client.
 pub struct PwmpClient {
-    stream: TcpStream,
+    /// Handle for the actual TCP stream.
+    stream: Socket,
+
+    /// Default buffer used to receive messages.
     buffer: [u8; RCV_BUFFER_SIZE],
+
+    /// IDs of previously received messages.
+    id_cache: [MsgId; ID_CACHE_SIZE],
+
+    /// A function capable of generating a new message ID.
+    ///
+    /// This may be a random number generator, or something else.
+    id_generator: &'static dyn Fn() -> MsgId,
 }
 
 impl PwmpClient {
@@ -45,26 +60,38 @@ impl PwmpClient {
     /// If the server rejects the client (for eg. if it's unathorized)
     /// an `Err(Error::Reject)` is returned. An error is also returned
     /// if a generic I/O error occurred.
-    pub fn new<A: ToSocketAddrs>(
+    pub fn new<A, G>(
         addr: A,
-        mac: Mac,
+        id_generator: &'static G,
         connect_timeout: Option<Duration>,
         read_timeout: Option<Duration>,
         write_timeout: Option<Duration>,
-    ) -> Result<Self> {
-        let addr = addr.to_socket_addrs()?.next().unwrap();
-        let socket = TcpStream::connect_timeout(&addr, connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
+    ) -> Result<Self>
+    where
+        A: ToSocketAddrs,
+        G: Fn() -> MsgId,
+    {
+        let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
 
+        // Set the options
+        socket.set_nodelay(true)?;
+        socket.set_keepalive(true)?;
+        socket.set_linger(Some(Duration::from_secs(1)))?;
         socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
         socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
 
-        let mut client = Self {
+        // Parse and resolve the specified address
+        let addr = addr.to_socket_addrs()?.next().ok_or(Error::IllegalAddr)?;
+
+        // Connect
+        socket.connect_timeout(&addr.into(), connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
+
+        Ok(Self {
             stream: socket,
             buffer: [0; RCV_BUFFER_SIZE],
-        };
-        client.send_greeting(mac)?;
-
-        Ok(client)
+            id_cache: Default::default(),
+            id_generator,
+        })
     }
 
     /// Try to ping the server. Returns whether the server responded correctly.
@@ -74,7 +101,7 @@ impl PwmpClient {
             return false;
         }
 
-        let Ok(response) = self.await_response(None) else {
+        let Ok(response) = self.receive_response(None) else {
             return false;
         };
 
@@ -88,7 +115,7 @@ impl PwmpClient {
     #[allow(clippy::items_after_statements)]
     pub fn get_settings(&mut self) -> Result<Option<NodeSettings>> {
         self.send_request(Request::GetSettings)?;
-        let response = self.await_response(None)?;
+        let response = self.receive_response(None)?;
 
         let Response::Settings(values) = response else {
             return Err(Error::UnexpectedVariant);
@@ -112,7 +139,7 @@ impl PwmpClient {
             humidity,
             air_pressure,
         })?;
-        self.await_ok()
+        self.wait_for_ok()
     }
 
     /// Post node stats.
@@ -130,7 +157,7 @@ impl PwmpClient {
             wifi_ssid: wifi_ssid.into(),
             wifi_rssi,
         })?;
-        self.await_ok()
+        self.wait_for_ok()
     }
 
     /// Send a text notification with the specified content.
@@ -146,7 +173,7 @@ impl PwmpClient {
             "Message content too large"
         );
         self.send_request(Request::SendNotification(message))?;
-        self.await_ok()
+        self.wait_for_ok()
     }
 
     /// Check if a newer firmware is available on the server.
@@ -156,7 +183,7 @@ impl PwmpClient {
     pub fn check_os_update(&mut self, current_version: Version) -> Result<ota::UpdateStatus> {
         self.send_request(Request::UpdateCheck(current_version))?;
 
-        match self.await_response(None)? {
+        match self.receive_response(None)? {
             Response::FirmwareUpToDate => Ok(ota::UpdateStatus::UpToDate),
             Response::UpdateAvailable(version) => Ok(ota::UpdateStatus::Available(version)),
             _ => Err(Error::UnexpectedVariant),
@@ -176,7 +203,7 @@ impl PwmpClient {
         self.send_request(Request::NextUpdateChunk(chunk_size))?;
 
         let mut buffer = vec![0; chunk_size + 32 /* Message overhead */];
-        let response = self.await_response(Some(&mut buffer))?;
+        let response = self.receive_response(Some(&mut buffer))?;
 
         match response {
             Response::UpdatePart(chunk) => Ok(Some(chunk)),
@@ -192,53 +219,119 @@ impl PwmpClient {
     /// Generic I/O
     pub fn report_firmware(&mut self, ok: bool) -> Result<()> {
         self.send_request(Request::ReportFirmwareUpdate(ok))?;
-        self.await_ok()
+        self.wait_for_ok()
     }
 
-    /// Send the initial greeting message to the server.
+    /// Send a handshake request.
     ///
     /// # Errors
     /// Generic I/O.
-    fn send_greeting(&mut self, mac: Mac) -> Result<()> {
-        self.send_request(Request::Hello { mac })?;
-        self.await_ok()
-    }
-
-    /// Send a request to the server.
-    ///
-    /// # Errors
-    /// Generic I/O.
-    fn send_request(&mut self, req: Request) -> Result<()> {
-        self.stream.write_all(&Message::Request(req).serialize())?;
-        self.stream.flush()?;
-
-        Ok(())
-    }
-
-    /// Wait for a response from the server.
-    ///
-    /// # Errors
-    /// Generic I/O.
-    fn await_response(&mut self, buffer: Option<&mut [u8]>) -> Result<Response> {
-        let buffer = buffer.unwrap_or(&mut self.buffer);
-        let read = self.stream.read(buffer)?;
-
-        let message = Message::deserialize(&buffer[..read]).ok_or(Error::MessageParse)?;
-        message.as_response().ok_or(Error::NotResponse)
+    pub fn perform_handshake(&mut self, mac: Mac) -> Result<()> {
+        self.send_request(Request::Handshake { mac })?;
+        self.wait_for_ok()
     }
 
     /// Wait for the server to reply with an `Ok` message.
     ///
     /// # Errors
     /// Generic I/O.
-    fn await_ok(&mut self) -> Result<()> {
-        let response = self.await_response(None)?;
+    fn wait_for_ok(&mut self) -> Result<()> {
+        // Read the next message.
+        let response = self.receive_response(None)?;
 
-        match response {
-            Response::Ok => Ok(()),
-            Response::Reject => Err(Error::Rejected),
-            _ => Err(Error::NotResponse),
+        // Check if it's an OK.
+        if !matches!(response, Response::Ok) {
+            return Err(Error::UnexpectedVariant);
         }
+
+        Ok(())
+    }
+
+    fn send_request(&mut self, req: Request) -> Result<()> {
+        self.send_message(Message::new_request(req, (self.id_generator)()))
+    }
+
+    fn send_message(&mut self, msg: Message) -> Result<()> {
+        // Serialize the message.
+        let raw = msg.serialize();
+
+        // Get the length and store it as a proper length integer.
+        let length: MsgLength = raw.len().try_into().map_err(|_| Error::MessageTooLarge)?;
+
+        // Send the length first as big/network endian.
+        self.stream.write_all(length.to_be_bytes().as_slice())?;
+
+        // Send the actual message next.
+        // TODO: Endianness should be handled internally, but this should be checked!
+        self.stream.write_all(&raw)?;
+
+        // Done
+        Ok(())
+    }
+
+    fn receive_response(&mut self, buffer: Option<&mut [u8]>) -> Result<Response> {
+        // Receive the message.
+        let message = self.receive_message(buffer)?;
+
+        // Convert it to a response.
+        let response = message.take_response().ok_or(Error::NotResponse)?;
+
+        // Check if the server returned an error.
+        Error::check_server_error(response)
+    }
+
+    fn receive_message(&mut self, buffer: Option<&mut [u8]>) -> Result<Message> {
+        // Use the provided buffer, or provide a default one.
+        let buffer = buffer.unwrap_or(&mut self.buffer);
+
+        // First read the message size.
+        self.stream
+            .read_exact(&mut buffer[..size_of::<MsgLength>()])?;
+
+        // Parse the length
+        let message_length: usize =
+            u32::from_be_bytes(*array_ref![buffer, 0, size_of::<u32>()]).try_into()?;
+
+        // Verify the length
+        if message_length == 0 {
+            return Err(Error::IllegalMessageLength);
+        }
+        // TODO: Add more restrictions as needed...
+
+        // Verify that the buffer is large enough.
+        if buffer.len() < message_length {
+            return Err(Error::InvalidBuffer);
+        }
+
+        // Read the actual message.
+        self.stream.read_exact(&mut buffer[..message_length])?;
+
+        // Parse the message.
+        let message = Message::deserialize(buffer).ok_or(Error::MessageParse)?;
+
+        // Check if it's not a duplicate.
+        if self.is_id_cached(message.id()) {
+            return Err(Error::DuplicateMessage);
+        }
+
+        // Cache the ID.
+        self.cache_id(message.id());
+
+        // Done
+        Ok(message)
+    }
+
+    fn is_id_cached(&self, id: MsgId) -> bool {
+        // Check if the ID matches any of the cached ones.
+        self.id_cache.iter().any(|candidate| candidate == &id)
+    }
+
+    fn cache_id(&mut self, id: MsgId) {
+        // Rotate the array left by one.
+        self.id_cache.rotate_left(1);
+
+        // Set the last ID to the specified one.
+        self.id_cache[self.id_cache.len() - 1] = id;
     }
 
     /// Check if the client has a connection to the server.
@@ -256,7 +349,8 @@ impl PwmpClient {
 
 impl Drop for PwmpClient {
     fn drop(&mut self) {
-        // Send the bye message
+        // Send the bye message.
+        // If the socket is already dead this will fail, but we can ignore that.
         let _ = self.send_request(Request::Bye);
 
         // Shut down the socket
