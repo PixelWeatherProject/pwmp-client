@@ -5,7 +5,7 @@ use consts::{
     UPDATE_PART_SIZE, WRITE_TIMEOUT,
 };
 use error::Error;
-use libc::{linger, socklen_t, SOL_SOCKET, SO_KEEPALIVE, SO_LINGER, TCP_NODELAY};
+use libc::{linger, socklen_t, SOL_SOCKET, SO_KEEPALIVE, SO_LINGER};
 pub use pwmp_msg;
 use pwmp_msg::{
     aliases::{AirPressure, BatteryVoltage, Humidity, Rssi, Temperature},
@@ -77,16 +77,17 @@ impl PwmpClient {
         let socket = TcpStream::connect_timeout(&addr, connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
 
         // Set the options
-        setsockopt::<i32>(&socket, TCP_NODELAY, None)?;
-        setsockopt::<i32>(&socket, SO_KEEPALIVE, None)?;
+        setsockopt(&socket, SOL_SOCKET, SO_KEEPALIVE, 1i32)?;
         setsockopt(
             &socket,
+            SOL_SOCKET,
             SO_LINGER,
             Some(linger {
                 l_linger: 5,
                 l_onoff: 1,
             }),
         )?;
+        socket.set_nodelay(true)?;
         socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
         socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
 
@@ -348,18 +349,6 @@ impl PwmpClient {
         // Set the last ID to the specified one.
         self.id_cache[self.id_cache.len() - 1] = id;
     }
-
-    /// Check if the client has a connection to the server.
-    ///
-    /// # Errors
-    /// Generic I/O.
-    fn connected(&self) -> bool {
-        if let Ok(amount) = self.stream.peek(&mut []) {
-            return amount > 0;
-        }
-
-        false
-    }
 }
 
 impl Drop for PwmpClient {
@@ -370,23 +359,16 @@ impl Drop for PwmpClient {
 
         // Shut down the socket
         let _ = self.stream.shutdown(Shutdown::Both);
-
-        // Wait until we disconnect
-        while self.connected() {}
     }
 }
 
-fn setsockopt<T>(fd: &TcpStream, opt: c_int, value: Option<T>) -> io::Result<()> {
-    let (ptr, len) = match value {
-        Some(v) => (&v as *const T as *const _, mem::size_of::<T>()),
-        None => (&1 as *const i32 as *const _, mem::size_of::<i32>()), // Default value for options expecting an integer
-    };
-
-    let err = unsafe { libc::setsockopt(fd.as_raw_fd(), SOL_SOCKET, opt, ptr, len as socklen_t) };
+fn setsockopt<T, FD: AsRawFd>(fd: &FD, level: c_int, opt: c_int, value: T) -> io::Result<()> {
+    let (ptr, len) = (&value as *const T as *const _, mem::size_of::<T>());
+    let err = unsafe { libc::setsockopt(fd.as_raw_fd(), level, opt, ptr, len as socklen_t) };
 
     if err == 0 {
         return Ok(());
     }
 
-    return Err(io::Error::last_os_error());
+    Err(io::Error::last_os_error())
 }
