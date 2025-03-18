@@ -17,8 +17,7 @@ use pwmp_msg::{
     Message, MsgId,
 };
 use std::{
-    any::Any,
-    ffi::{c_int, c_void},
+    ffi::c_int,
     io::{self, Read, Write},
     mem,
     net::{Shutdown, TcpStream, ToSocketAddrs},
@@ -74,20 +73,22 @@ impl PwmpClient {
         A: ToSocketAddrs,
         G: Fn() -> MsgId,
     {
-        let socket = TcpStream::connect_timeout(addr, connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
+        let addr = addr.to_socket_addrs()?.next().ok_or(Error::IllegalAddr)?;
+        let socket = TcpStream::connect_timeout(&addr, connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
 
         // Set the options
-        setsockopt(&socket, TCP_NODELAY)?;
-        setsockopt(&socket, SO_KEEPALIVE)?;
-        setsockopt(&socket, SO_LINGER)?;
+        setsockopt::<i32>(&socket, TCP_NODELAY, None)?;
+        setsockopt::<i32>(&socket, SO_KEEPALIVE, None)?;
+        setsockopt(
+            &socket,
+            SO_LINGER,
+            Some(linger {
+                l_linger: 5,
+                l_onoff: 1,
+            }),
+        )?;
         socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
         socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
-
-        // Parse and resolve the specified address
-        let addr = addr.to_socket_addrs()?.next().ok_or(Error::IllegalAddr)?;
-
-        // Connect
-        socket.connect_timeout(&addr.into(), connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
 
         Ok(Self {
             stream: socket,
@@ -375,18 +376,13 @@ impl Drop for PwmpClient {
     }
 }
 
-fn setsockopt(fd: &TcpStream, opt: c_int, value: Option<Box<dyn Any>>) -> io::Result<()> {
-    let optval: c_void = value.unwrap_or_else(|| Box::new(1)).as_ref() as c_void;
-
-    let err = unsafe {
-        libc::setsockopt(
-            fd.as_raw_fd(),
-            libc::SOL_SOCKET,
-            opt,
-            &optval as *const _ as *const c_void,
-            mem::size_of_val(&optval) as socklen_t,
-        )
+fn setsockopt<T>(fd: &TcpStream, opt: c_int, value: Option<T>) -> io::Result<()> {
+    let (ptr, len) = match value {
+        Some(v) => (&v as *const T as *const _, mem::size_of::<T>()),
+        None => (&1 as *const i32 as *const _, mem::size_of::<i32>()), // Default value for options expecting an integer
     };
+
+    let err = unsafe { libc::setsockopt(fd.as_raw_fd(), SOL_SOCKET, opt, ptr, len as socklen_t) };
 
     if err == 0 {
         return Ok(());
