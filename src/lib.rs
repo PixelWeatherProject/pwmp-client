@@ -251,6 +251,11 @@ impl PwmpClient {
     }
 
     fn send_message(&mut self, msg: Message) -> Result<()> {
+        // Make a copy of the message ID to use later.
+        // The message object will be moved, and we don't want to store an ID
+        // that's never been actually sent.
+        let id = msg.id();
+
         // Serialize the message.
         let raw = msg.serialize();
 
@@ -268,7 +273,7 @@ impl PwmpClient {
         self.stream.flush()?;
 
         // Cache the ID.
-        self.cache_id(msg.id());
+        self.cache_id(id);
 
         // Done
         Ok(())
