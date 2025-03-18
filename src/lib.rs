@@ -18,10 +18,10 @@ use pwmp_msg::{
 };
 use std::{
     ffi::c_int,
-    io::{self, Read, Write},
+    io::{self, BufReader, BufWriter, Read, Write},
     mem,
     net::{Shutdown, TcpStream, ToSocketAddrs},
-    os::fd::AsRawFd,
+    os::fd::{AsRawFd, FromRawFd},
     time::Duration,
 };
 
@@ -41,7 +41,8 @@ mod consts;
 /// PixelWeather Messaging Protocol Client.
 pub struct PwmpClient {
     /// Handle for the actual TCP stream.
-    stream: TcpStream,
+    reader: BufReader<TcpStream>,
+    writer: BufWriter<TcpStream>,
 
     /// Default buffer used to receive messages.
     buffer: [u8; RCV_BUFFER_SIZE],
@@ -91,8 +92,11 @@ impl PwmpClient {
         socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
         socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
 
+        let socket_copy = unsafe { TcpStream::from_raw_fd(socket.as_raw_fd()) };
+
         Ok(Self {
-            stream: socket,
+            reader: BufReader::new(socket_copy),
+            writer: BufWriter::new(socket),
             buffer: [0; RCV_BUFFER_SIZE],
             id_cache: Default::default(),
             id_generator,
@@ -269,14 +273,14 @@ impl PwmpClient {
         let length: MsgLength = raw.len().try_into().map_err(|_| Error::MessageTooLarge)?;
 
         // Send the length first as big/network endian.
-        self.stream.write_all(length.to_be_bytes().as_slice())?;
+        self.writer.write_all(length.to_be_bytes().as_slice())?;
 
         // Send the actual message next.
         // TODO: Endianness should be handled internally, but this should be checked!
-        self.stream.write_all(&raw)?;
+        self.writer.write_all(&raw)?;
 
         // Flush the buffer.
-        self.stream.flush()?;
+        self.writer.flush()?;
 
         // Cache the ID.
         self.cache_id(id);
@@ -301,7 +305,7 @@ impl PwmpClient {
         let buffer = buffer.unwrap_or(&mut self.buffer);
 
         // First read the message size.
-        self.stream
+        self.reader
             .read_exact(&mut buffer[..size_of::<MsgLength>()])?;
 
         // Parse the length
@@ -320,7 +324,7 @@ impl PwmpClient {
         }
 
         // Read the actual message.
-        self.stream.read_exact(&mut buffer[..message_length])?;
+        self.reader.read_exact(&mut buffer[..message_length])?;
 
         // Parse the message.
         let message = Message::deserialize(buffer).ok_or(Error::MessageParse)?;
@@ -358,7 +362,7 @@ impl Drop for PwmpClient {
         let _ = self.send_request(Request::Bye);
 
         // Shut down the socket
-        let _ = self.stream.shutdown(Shutdown::Both);
+        let _ = self.reader.get_ref().shutdown(Shutdown::Both);
     }
 }
 
