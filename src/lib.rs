@@ -13,7 +13,7 @@ use pwmp_msg::{
     response::Response,
     settings::NodeSettings,
     version::Version,
-    Message,
+    Message, MsgId,
 };
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
@@ -24,7 +24,6 @@ use std::{
 
 pub(crate) type Result<T> = ::std::result::Result<T, Error>;
 type MsgLength = u32;
-type MsgId = u32;
 
 /// Contains the [`Error`] type.
 pub mod error;
