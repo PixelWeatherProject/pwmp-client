@@ -52,9 +52,12 @@ pub enum Error {
     #[error("parse")]
     MessageParse,
 
-    /// Unexpected variant of a response or request.
-    #[error("bad variant")]
-    UnexpectedVariant,
+    /// Unexpected response.
+    #[error("Received unexpected response: expected '{expected}', got '{got:?}'")]
+    UnexpectedResponse {
+        expected: &'static str,
+        got: Response,
+    },
 
     /// Malformed response.
     #[error("malformed response")]

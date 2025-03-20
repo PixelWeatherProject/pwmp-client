@@ -123,7 +123,10 @@ impl PwmpClient {
         let response = self.receive_response(None)?;
 
         let Response::Settings(values) = response else {
-            return Err(Error::UnexpectedVariant);
+            return Err(Error::UnexpectedResponse {
+                expected: "Settings",
+                got: response,
+            });
         };
 
         Ok(values)
@@ -191,7 +194,10 @@ impl PwmpClient {
         match self.receive_response(None)? {
             Response::FirmwareUpToDate => Ok(ota::UpdateStatus::UpToDate),
             Response::UpdateAvailable(version) => Ok(ota::UpdateStatus::Available(version)),
-            _ => Err(Error::UnexpectedVariant),
+            other => Err(Error::UnexpectedResponse {
+                expected: "FirmwareUpToDate/UpdateAvailable",
+                got: other,
+            }),
         }
     }
 
@@ -213,7 +219,10 @@ impl PwmpClient {
         match response {
             Response::UpdatePart(chunk) => Ok(Some(chunk)),
             Response::UpdateEnd => Ok(None),
-            _ => Err(Error::UnexpectedVariant),
+            _ => Err(Error::UnexpectedResponse {
+                expected: "UpdatePart/UpdateEnd",
+                got: response,
+            }),
         }
     }
 
@@ -246,7 +255,10 @@ impl PwmpClient {
 
         // Check if it's an OK.
         if !matches!(response, Response::Ok) {
-            return Err(Error::UnexpectedVariant);
+            return Err(Error::UnexpectedResponse {
+                expected: "Ok",
+                got: response,
+            });
         }
 
         Ok(())
