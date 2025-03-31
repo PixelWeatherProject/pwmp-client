@@ -318,7 +318,7 @@ impl PwmpClient {
 
         // Parse the length
         let message_length: usize =
-            u32::from_be_bytes(*array_ref![buffer, 0, size_of::<u32>()]).try_into()?;
+            MsgLength::from_be_bytes(*array_ref![buffer, 0, size_of::<MsgLength>()]).try_into()?;
 
         // Verify the length
         if message_length == 0 {
@@ -335,7 +335,7 @@ impl PwmpClient {
         self.stream.read_exact(&mut buffer[..message_length])?;
 
         // Parse the message.
-        let message = Message::deserialize(buffer).ok_or(Error::MessageParse)?;
+        let message = Message::deserialize(&buffer[..message_length]).ok_or(Error::MessageParse)?;
 
         // Check if it's not a duplicate.
         if self.is_id_cached(message.id()) {
