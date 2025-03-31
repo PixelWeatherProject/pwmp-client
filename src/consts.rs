@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 /// Receive buffer size for sockets.
-pub const RCV_BUFFER_SIZE: usize = 96;
+pub const RCV_BUFFER_SIZE: usize = 4096;
 
 /// Number of message IDs to cache.
 pub const ID_CACHE_SIZE: usize = 8;
