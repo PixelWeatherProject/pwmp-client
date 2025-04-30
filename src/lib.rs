@@ -374,16 +374,12 @@ impl Drop for PwmpClient {
     }
 }
 
-#[allow(
-    clippy::needless_pass_by_value,
-    clippy::ptr_as_ptr,
-    clippy::cast_possible_truncation,
-    clippy::borrow_as_ptr,
-    clippy::ref_as_ptr
-)]
+#[allow(clippy::needless_pass_by_value)] // Passing a reference to T causes this to break. Possibly because `ptr` becomes a double pointer?
 fn setsockopt<T, FD: AsRawFd>(fd: &FD, level: c_int, opt: c_int, value: T) -> io::Result<()> {
-    let (ptr, len) = (&value as *const T as *const _, mem::size_of::<T>());
-    let err = unsafe { libc::setsockopt(fd.as_raw_fd(), level, opt, ptr, len as socklen_t) };
+    let (ptr, len) = ((&raw const value).cast(), mem::size_of::<T>());
+    let option_len = socklen_t::try_from(len)
+        .map_err(|_| io::Error::other("failed to convert usize to socklen_t"))?;
+    let err = unsafe { libc::setsockopt(fd.as_raw_fd(), level, opt, ptr, option_len) };
 
     if err == 0 {
         return Ok(());
