@@ -374,6 +374,13 @@ impl Drop for PwmpClient {
     }
 }
 
+#[allow(
+    clippy::needless_pass_by_value,
+    clippy::ptr_as_ptr,
+    clippy::cast_possible_truncation,
+    clippy::borrow_as_ptr,
+    clippy::ref_as_ptr
+)]
 fn setsockopt<T, FD: AsRawFd>(fd: &FD, level: c_int, opt: c_int, value: T) -> io::Result<()> {
     let (ptr, len) = (&value as *const T as *const _, mem::size_of::<T>());
     let err = unsafe { libc::setsockopt(fd.as_raw_fd(), level, opt, ptr, len as socklen_t) };
