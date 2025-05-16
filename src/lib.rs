@@ -370,7 +370,7 @@ impl Drop for PwmpClient {
         let _ = self.send_request(Request::Bye);
 
         // Shut down the socket
-        let _ = self.stream.shutdown(Shutdown::Both);
+        let _ = self.stream.shutdown(Shutdown::Write);
     }
 }
 
