@@ -1,6 +1,5 @@
-use std::{array::TryFromSliceError, io, num::TryFromIntError};
-
 use pwmp_msg::response::Response;
+use std::{array::TryFromSliceError, io, num::TryFromIntError};
 
 /// Errors.
 #[derive(Debug, thiserror::Error)]
