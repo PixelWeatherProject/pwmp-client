@@ -1,5 +1,4 @@
 #![allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
-use arrayref::array_ref;
 use consts::{
     CONNECT_TIMEOUT, ID_CACHE_SIZE, NOTIFICATION_MAX_LEN, RCV_BUFFER_SIZE, READ_TIMEOUT,
     UPDATE_PART_SIZE, WRITE_TIMEOUT,
@@ -318,7 +317,7 @@ impl PwmpClient {
 
         // Parse the length
         let message_length: usize =
-            MsgLength::from_be_bytes(*array_ref![buffer, 0, size_of::<MsgLength>()]).try_into()?;
+            MsgLength::from_be_bytes(buffer[..size_of::<MsgLength>()].try_into()?).try_into()?;
 
         // Verify the length
         if message_length == 0 {

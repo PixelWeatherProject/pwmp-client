@@ -1,4 +1,4 @@
-use std::{io, num::TryFromIntError};
+use std::{array::TryFromSliceError, io, num::TryFromIntError};
 
 use pwmp_msg::response::Response;
 
@@ -62,6 +62,9 @@ pub enum Error {
     /// Malformed response.
     #[error("malformed response")]
     MalformedResponse,
+
+    #[error("Slice length does not match the expected array length: {0}")]
+    ArrayFromSliceSizeMismatch(#[from] TryFromSliceError),
 }
 
 impl Error {
