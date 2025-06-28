@@ -279,8 +279,8 @@ impl PwmpClient {
         // Get the length and store it as a proper length integer.
         let length: MsgLength = raw.len().try_into().map_err(|_| Error::MessageTooLarge)?;
 
-        // Send the length first as big/network endian.
-        self.stream.write_all(length.to_be_bytes().as_slice())?;
+        // Send the length first as network endian.
+        self.stream.write_all(length.to_ne_bytes().as_slice())?;
 
         // Send the actual message next.
         // TODO: Endianness should be handled internally, but this should be checked!
@@ -317,7 +317,7 @@ impl PwmpClient {
 
         // Parse the length
         let message_length: usize =
-            MsgLength::from_be_bytes(buffer[..size_of::<MsgLength>()].try_into()?).try_into()?;
+            MsgLength::from_ne_bytes(buffer[..size_of::<MsgLength>()].try_into()?).try_into()?;
 
         // Verify the length
         if message_length == 0 {
