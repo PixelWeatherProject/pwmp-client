@@ -283,7 +283,6 @@ impl PwmpClient {
         self.stream.write_all(length.to_ne_bytes().as_slice())?;
 
         // Send the actual message next.
-        // TODO: Endianness should be handled internally, but this should be checked!
         self.stream.write_all(&raw)?;
 
         // Flush the buffer.
@@ -323,7 +322,6 @@ impl PwmpClient {
         if message_length == 0 {
             return Err(Error::IllegalMessageLength);
         }
-        // TODO: Add more restrictions as needed...
 
         // Verify that the buffer is large enough.
         if buffer.len() < message_length {
