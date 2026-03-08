@@ -351,7 +351,7 @@ impl PwmpClient {
         self.id_cache.iter().any(|candidate| candidate == &id)
     }
 
-    fn cache_id(&mut self, id: MsgId) {
+    const fn cache_id(&mut self, id: MsgId) {
         // Rotate the array left by one.
         self.id_cache.rotate_left(1);
 
