@@ -74,7 +74,7 @@ dependencies = [
 
 [[package]]
 name = "pwmp-client"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "libc",
  "pwmp-msg",
