@@ -12,5 +12,5 @@ repository = "https://github.com/PixelWeatherProject/pwmp-client"
 
 [dependencies]
 thiserror = "2.0.18"
-pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", tag = "v2.1.9" }
+pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", tag = "v2.1.10" }
 libc = { version = "0.2.183", default-features = false }
