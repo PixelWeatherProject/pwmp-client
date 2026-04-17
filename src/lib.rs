@@ -280,7 +280,7 @@ impl PwmpClient {
         let length: MsgLength = raw.len().try_into().map_err(|_| Error::MessageTooLarge)?;
 
         // Send the length first as network endian.
-        self.stream.write_all(length.to_be_bytes().as_slice())?;
+        self.stream.write_all(&length.to_be_bytes())?;
 
         // Send the actual message next.
         self.stream.write_all(&raw)?;
