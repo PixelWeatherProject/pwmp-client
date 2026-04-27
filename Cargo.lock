@@ -47,9 +47,9 @@ checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
 name = "libc"
-version = "0.2.185"
+version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ff2c0fe9bc6cb6b14a0592c2ff4fa9ceb83eea9db979b0487cd054946a2b8f"
+checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "postcard"
@@ -83,8 +83,8 @@ dependencies = [
 
 [[package]]
 name = "pwmp-msg"
-version = "2.1.11"
-source = "git+https://github.com/PixelWeatherProject/pwmp-msg?tag=v2.1.11#37463a47791472077ee525e5350abd560ebe4ad6"
+version = "2.1.12"
+source = "git+https://github.com/PixelWeatherProject/pwmp-msg?tag=v2.1.12#2405f2e2973e1470a313d61499220015161304a0"
 dependencies = [
  "derive_more",
  "postcard",
