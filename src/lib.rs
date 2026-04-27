@@ -208,9 +208,10 @@ impl PwmpClient {
     ///
     /// # Errors
     /// Generic I/O
-    pub fn next_update_chunk(&mut self, chunk_size: Option<usize>) -> Result<Option<Box<[u8]>>> {
+    pub fn next_update_chunk(&mut self, chunk_size: Option<u32>) -> Result<Option<Box<[u8]>>> {
         let chunk_size = chunk_size.unwrap_or(UPDATE_PART_SIZE);
         self.send_request(Request::NextUpdateChunk(chunk_size))?;
+        let chunk_size: usize = chunk_size.try_into()?;
 
         let mut buffer = vec![0; chunk_size + 32 /* Message overhead */];
         let response = self.receive_response(Some(&mut buffer))?;
