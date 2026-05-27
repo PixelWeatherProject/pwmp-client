@@ -1,7 +1,7 @@
 #![allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
 use consts::{
-    CONNECT_TIMEOUT, ID_CACHE_SIZE, NOTIFICATION_MAX_LEN, RCV_BUFFER_SIZE, READ_TIMEOUT,
-    UPDATE_PART_SIZE, WRITE_TIMEOUT,
+    CONNECT_TIMEOUT, NOTIFICATION_MAX_LEN, RCV_BUFFER_SIZE, READ_TIMEOUT, UPDATE_PART_SIZE,
+    WRITE_TIMEOUT,
 };
 use error::Error;
 use libc::{linger, socklen_t, SOL_SOCKET, SO_KEEPALIVE, SO_LINGER};
@@ -45,8 +45,8 @@ pub struct PwmpClient {
     /// Default buffer used to receive messages.
     buffer: [u8; RCV_BUFFER_SIZE],
 
-    /// IDs of previously received messages.
-    id_cache: [MsgId; ID_CACHE_SIZE],
+    /// IDs of previously received message.
+    prev_id: Option<MsgId>,
 
     /// A function capable of generating a new message ID.
     ///
@@ -93,7 +93,7 @@ impl PwmpClient {
         Ok(Self {
             stream: socket,
             buffer: [0; RCV_BUFFER_SIZE],
-            id_cache: Default::default(),
+            prev_id: None,
             id_generator,
         })
     }
@@ -135,33 +135,24 @@ impl PwmpClient {
     ///
     /// # Errors
     /// Generic I/O.
+    #[allow(clippy::too_many_arguments)]
     pub fn post_measurements(
         &mut self,
         temperature: Temperature,
         humidity: Humidity,
         air_pressure: Option<AirPressure>,
+        battery: BatteryVoltage,
+        cpu_temp: Temperature,
+        wifi_ssid: Box<str>,
+        wifi_rssi: Rssi,
     ) -> Result<()> {
-        self.send_request(Request::PostResults {
+        self.send_request(Request::PostMeasurements {
             temperature,
             humidity,
             air_pressure,
-        })?;
-        self.wait_for_ok()
-    }
-
-    /// Post node stats.
-    ///
-    /// # Errors
-    /// Generic I/O.
-    pub fn post_stats(
-        &mut self,
-        battery: BatteryVoltage,
-        wifi_ssid: &str,
-        wifi_rssi: Rssi,
-    ) -> Result<()> {
-        self.send_request(Request::PostStats {
             battery,
-            wifi_ssid: wifi_ssid.into(),
+            cpu_temp,
+            wifi_ssid,
             wifi_rssi,
         })?;
         self.wait_for_ok()
@@ -336,7 +327,7 @@ impl PwmpClient {
         let message = Message::deserialize(&buffer[..message_length]).ok_or(Error::MessageParse)?;
 
         // Check if it's not a duplicate.
-        if self.is_id_cached(message.id()) {
+        if self.is_id_duplicate(message.id()) {
             return Err(Error::DuplicateMessage);
         }
 
@@ -347,17 +338,12 @@ impl PwmpClient {
         Ok(message)
     }
 
-    fn is_id_cached(&self, id: MsgId) -> bool {
-        // Check if the ID matches any of the cached ones.
-        self.id_cache.iter().any(|candidate| candidate == &id)
+    fn is_id_duplicate(&self, id: MsgId) -> bool {
+        self.prev_id == Some(id)
     }
 
     const fn cache_id(&mut self, id: MsgId) {
-        // Rotate the array left by one.
-        self.id_cache.rotate_left(1);
-
-        // Set the last ID to the specified one.
-        self.id_cache[self.id_cache.len() - 1] = id;
+        self.prev_id = Some(id);
     }
 }
 
