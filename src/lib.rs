@@ -51,6 +51,11 @@ pub struct PwmpClient {
     /// A function capable of generating a new message ID.
     ///
     /// This may be a random number generator, or something else.
+    ///
+    /// # Note
+    /// The uniqueness of every returned ID must be guarateed by the generator
+    /// itself. If the function returns the same ID twice in a row, the server
+    /// will reject the message, due to the duplicate ID.
     id_generator: &'static dyn Fn() -> MsgId,
 }
 
