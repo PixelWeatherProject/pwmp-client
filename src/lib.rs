@@ -260,11 +260,6 @@ impl PwmpClient {
     }
 
     fn send_message(&mut self, msg: Message) -> Result<()> {
-        // Make a copy of the message ID to use later.
-        // The message object will be moved, and we don't want to store an ID
-        // that's never been actually sent.
-        let id = msg.id();
-
         // Serialize the message.
         let raw = msg.serialize();
 
@@ -279,9 +274,6 @@ impl PwmpClient {
 
         // Flush the buffer.
         self.stream.flush()?;
-
-        // Cache the ID.
-        self.cache_id(id);
 
         // Done
         Ok(())
@@ -332,7 +324,7 @@ impl PwmpClient {
         }
 
         // Cache the ID.
-        self.cache_id(message.id());
+        self.prev_id = Some(message.id());
 
         // Done
         Ok(message)
@@ -340,10 +332,6 @@ impl PwmpClient {
 
     fn is_id_duplicate(&self, id: MsgId) -> bool {
         self.prev_id == Some(id)
-    }
-
-    const fn cache_id(&mut self, id: MsgId) {
-        self.prev_id = Some(id);
     }
 }
 
