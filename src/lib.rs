@@ -148,7 +148,7 @@ impl PwmpClient {
         air_pressure: Option<AirPressure>,
         battery: BatteryVoltage,
         cpu_temp: Temperature,
-        wifi_ssid: Box<str>,
+        wifi_ssid: &str,
         wifi_rssi: Rssi,
     ) -> Result<()> {
         self.send_request(Request::PostMeasurements {
@@ -157,7 +157,7 @@ impl PwmpClient {
             air_pressure,
             battery,
             cpu_temp,
-            wifi_ssid,
+            wifi_ssid: wifi_ssid.into(),
             wifi_rssi,
         })?;
         self.wait_for_ok()
