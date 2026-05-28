@@ -74,7 +74,7 @@ dependencies = [
 
 [[package]]
 name = "pwmp-client"
-version = "3.0.2"
+version = "3.1.0"
 dependencies = [
  "libc",
  "pwmp-msg",
@@ -83,8 +83,8 @@ dependencies = [
 
 [[package]]
 name = "pwmp-msg"
-version = "3.0.0"
-source = "git+https://github.com/PixelWeatherProject/pwmp-msg?tag=v3.0.0#2931a50042d0122f61ab9b32581c6b4b8654dbd2"
+version = "3.1.0"
+source = "git+https://github.com/PixelWeatherProject/pwmp-msg?tag=v3.1.0#e2a2208c2d3baca42740b5e69105699c491cb2c1"
 dependencies = [
  "derive_more",
  "postcard",

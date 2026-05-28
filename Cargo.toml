@@ -1,6 +1,6 @@
 [package]
 name = "pwmp-client"
-version = "3.0.2"
+version = "3.1.0"
 edition = "2021"
 authors = ["Fábián Varga <23280129+br0kenpixel@users.noreply.github.com>"]
 description = "The PixelWeather Messaging Protocol client."
@@ -12,5 +12,5 @@ repository = "https://github.com/PixelWeatherProject/pwmp-client"
 
 [dependencies]
 thiserror = "2.0.18"
-pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", tag = "v3.0.0" }
+pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", tag = "v3.1.0" }
 libc = { version = "0.2.186", default-features = false }
