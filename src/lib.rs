@@ -1,5 +1,6 @@
+use crate::consts::{DIAG_DATA_MAX_LEN, UPDATE_BLOB_MAX_LEN};
 use consts::{
-    CONNECT_TIMEOUT, NOTIFICATION_MAX_LEN, RCV_BUFFER_SIZE, READ_TIMEOUT, UPDATE_PART_SIZE,
+    CONNECT_TIMEOUT, NOTIFICATION_MAX_LEN, RCV_BUFFER_SIZE, READ_TIMEOUT, UPDATE_BLOB_DEFAULT_LEN,
     WRITE_TIMEOUT,
 };
 use error::Error;
@@ -167,6 +168,38 @@ impl PwmpClient {
         self.wait_for_ok()
     }
 
+    /// Upload a diagnostic artifact, identified by `tag`, to the server.
+    ///
+    /// The tag must be non-empty and consist only of ASCII alphanumeric or punctuation characters.
+    /// The content must be non-empty and at most [`DIAG_DATA_MAX_LEN`] bytes long.
+    ///
+    /// # Errors
+    /// Generic I/O, invalid tag or content size.
+    pub fn send_diagnostic_data<S: Into<Box<str>>>(
+        &mut self,
+        tag: S,
+        content: Box<[u8]>,
+    ) -> Result<()> {
+        let tag: Box<str> = tag.into();
+
+        if tag.is_empty()
+            || !tag
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c.is_ascii_punctuation())
+        {
+            return Err(Error::IllegalDiagArtifactTag);
+        }
+
+        if content.is_empty() || content.len() > DIAG_DATA_MAX_LEN {
+            return Err(Error::IllegalDiagArtifactSize(content.len()));
+        }
+
+        self.send_request(Request::PostDiagnosticsArtifact { kind: tag, content })?;
+        self.wait_for_ok()?;
+
+        Ok(())
+    }
+
     /// Check if a newer firmware is available on the server.
     ///
     /// # Errors
@@ -193,12 +226,20 @@ impl PwmpClient {
     /// # Errors
     /// Generic I/O
     pub fn next_update_chunk(&mut self, chunk_size: Option<u32>) -> Result<Option<Box<[u8]>>> {
-        let chunk_size = chunk_size.unwrap_or(UPDATE_PART_SIZE);
+        let chunk_size = chunk_size.unwrap_or(UPDATE_BLOB_DEFAULT_LEN);
+
+        if chunk_size > UPDATE_BLOB_MAX_LEN {
+            return Err(Error::IllegalUpdateRequestSize(chunk_size));
+        }
+
         self.send_request(Request::NextUpdateChunk(chunk_size))?;
         let chunk_size: usize = chunk_size.try_into()?;
 
         let mut buffer = vec![0; chunk_size + 32 /* Message overhead */];
         let response = self.receive_response(Some(&mut buffer))?;
+
+        // note: the server must separately enforce `UPDATE_BLOB_MAX_LEN`, otherwise
+        // we could stil get a chunk larger than `UPDATE_BLOB_MAX_LEN`
 
         match response {
             Response::UpdatePart(chunk) => Ok(Some(chunk)),

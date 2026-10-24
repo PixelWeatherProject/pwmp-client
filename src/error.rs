@@ -1,4 +1,4 @@
-use super::NOTIFICATION_MAX_LEN;
+use super::{DIAG_DATA_MAX_LEN, NOTIFICATION_MAX_LEN, UPDATE_BLOB_MAX_LEN};
 use pwmp_msg::response::Response;
 use std::{array::TryFromSliceError, io, num::TryFromIntError};
 
@@ -35,6 +35,18 @@ pub enum Error {
     /// Maximum notification length exceeded.
     #[error("Maximum notification length exceeded ({NOTIFICATION_MAX_LEN} allowed, {0} provided)")]
     IllegalNotificationLength(usize),
+
+    /// Diagnostic artifact tag is empty or contains illegal characters.
+    #[error("Diagnostic artifact tag is empty or contains illegal characters")]
+    IllegalDiagArtifactTag,
+
+    /// Diagnostic artifact content is empty or too large.
+    #[error("Diagnostic artifact size must be between 1 and {DIAG_DATA_MAX_LEN} bytes ({0} provided)")]
+    IllegalDiagArtifactSize(usize),
+
+    /// Requested update chunk size is too large.
+    #[error("Maximum update chunk size exceeded ({UPDATE_BLOB_MAX_LEN} allowed, {0} requested)")]
+    IllegalUpdateRequestSize(u32),
 
     /// Invalid message length.
     #[error("Message is too large to send")]
