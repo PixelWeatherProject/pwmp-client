@@ -1,9 +1,18 @@
+use super::NOTIFICATION_MAX_LEN;
 use pwmp_msg::response::Response;
 use std::{array::TryFromSliceError, io, num::TryFromIntError};
 
 /// Errors.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Failed to serialize a message.
+    #[error("Serialize: {0}")]
+    Serialize(pwmp_msg::postcard::Error),
+
+    /// Failed to serialize a message.
+    #[error("Deserialize: {0}")]
+    Deserialize(pwmp_msg::postcard::Error),
+
     /// Generic I/O error.
     #[error("I/O error: [{}] {inner}", inner.kind())]
     Io {
@@ -22,6 +31,10 @@ pub enum Error {
     /// Server sent an error.
     #[error("Server returned error: {0:?}")]
     Server(pwmp_msg::response::Response),
+
+    /// Maximum notification length exceeded.
+    #[error("Maximum notification length exceeded ({NOTIFICATION_MAX_LEN} allowed, {0} provided)")]
+    IllegalNotificationLength(usize),
 
     /// Invalid message length.
     #[error("Message is too large to send")]
