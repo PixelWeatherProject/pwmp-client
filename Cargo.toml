@@ -11,6 +11,6 @@ readme = "README.md"
 repository = "https://github.com/PixelWeatherProject/pwmp-client"
 
 [dependencies]
-thiserror = "2.0.19"
-pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", tag = "v3.1.1" }
-libc = { version = "0.2.189", default-features = false }
+thiserror = "2.0.21"
+pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", branch = "v4-2026" }
+libc = { version = "0.2.191", default-features = false }
