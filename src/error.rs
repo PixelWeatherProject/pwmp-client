@@ -48,6 +48,10 @@ pub enum Error {
     #[error("Failed to convert between integer types")]
     IntConversion(#[from] TryFromIntError),
 
+    /// Float value is NaN, infinite, or out of range for the target integer type.
+    #[error("Value {0} cannot be represented in the target unit")]
+    IllegalValue(f32),
+
     /// The provided buffer was not large enough.
     #[error("The provided buffer is too small")]
     InvalidBuffer,
