@@ -1,10 +1,8 @@
-#![allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
 use consts::{
     CONNECT_TIMEOUT, NOTIFICATION_MAX_LEN, RCV_BUFFER_SIZE, READ_TIMEOUT, UPDATE_PART_SIZE,
     WRITE_TIMEOUT,
 };
 use error::Error;
-use libc::{linger, socklen_t, SOL_SOCKET, SO_KEEPALIVE, SO_LINGER};
 pub use pwmp_msg;
 use pwmp_msg::{
     aliases::{AirPressure, BatteryVoltage, Humidity, Rssi, Temperature},
@@ -16,11 +14,8 @@ use pwmp_msg::{
     Message, MsgId,
 };
 use std::{
-    ffi::c_int,
-    io::{self, Read, Write},
-    mem,
+    io::{self, IoSlice, Read, Write},
     net::{Shutdown, TcpStream, ToSocketAddrs},
-    os::fd::AsRawFd,
     time::Duration,
 };
 
@@ -80,17 +75,6 @@ impl PwmpClient {
         let addr = addr.to_socket_addrs()?.next().ok_or(Error::IllegalAddr)?;
         let socket = TcpStream::connect_timeout(&addr, connect_timeout.unwrap_or(CONNECT_TIMEOUT))?;
 
-        // Set the options
-        setsockopt(&socket, SOL_SOCKET, SO_KEEPALIVE, 1i32)?;
-        setsockopt(
-            &socket,
-            SOL_SOCKET,
-            SO_LINGER,
-            Some(linger {
-                l_linger: 5,
-                l_onoff: 1,
-            }),
-        )?;
         socket.set_nodelay(true)?;
         socket.set_read_timeout(Some(read_timeout.unwrap_or(READ_TIMEOUT)))?;
         socket.set_write_timeout(Some(write_timeout.unwrap_or(WRITE_TIMEOUT)))?;
@@ -103,18 +87,22 @@ impl PwmpClient {
         })
     }
 
-    /// Try to ping the server. Returns whether the server responded correctly.
-    /// On an I/O error, `false` is returned.
-    pub fn ping(&mut self) -> bool {
-        if self.send_request(Request::Ping).is_err() {
-            return false;
-        }
-
-        let Ok(response) = self.receive_response(None) else {
-            return false;
-        };
-
-        response == Response::Pong
+    /// Send a handshake request.
+    ///
+    /// # Errors
+    /// Generic I/O.
+    pub fn initialize_session(
+        &mut self,
+        mac: Mac,
+        os_version: Version,
+        os_version_ext: Option<Box<str>>,
+    ) -> Result<()> {
+        self.send_request(Request::Hello {
+            mac,
+            os_version,
+            os_version_ext,
+        })?;
+        self.wait_for_ok()
     }
 
     /// Get the node's settings.
@@ -171,10 +159,10 @@ impl PwmpClient {
         // This should not allocate if `S` was a `String` *AND* it does *NOT* have excess capacity.
         let message: Box<str> = content.into();
 
-        assert!(
-            message.len() <= NOTIFICATION_MAX_LEN,
-            "Message content too large"
-        );
+        if message.len() >= NOTIFICATION_MAX_LEN {
+            return Err(Error::IllegalNotificationLength(message.len()));
+        }
+
         self.send_request(Request::SendNotification(message))?;
         self.wait_for_ok()
     }
@@ -232,15 +220,6 @@ impl PwmpClient {
         self.wait_for_ok()
     }
 
-    /// Send a handshake request.
-    ///
-    /// # Errors
-    /// Generic I/O.
-    pub fn perform_handshake(&mut self, mac: Mac) -> Result<()> {
-        self.send_request(Request::Handshake { mac })?;
-        self.wait_for_ok()
-    }
-
     /// Wait for the server to reply with an `Ok` message.
     ///
     /// # Errors
@@ -266,16 +245,26 @@ impl PwmpClient {
 
     fn send_message(&mut self, msg: Message) -> Result<()> {
         // Serialize the message.
-        let raw = msg.serialize();
+        let raw = msg.serialize().map_err(Error::Serialize)?;
 
         // Get the length and store it as a proper length integer.
         let length: MsgLength = raw.len().try_into().map_err(|_| Error::MessageTooLarge)?;
+        let header = length.to_be_bytes();
 
-        // Send the length first as network endian.
-        self.stream.write_all(&length.to_be_bytes())?;
+        // Prepare the complete message for a vectored write
+        let mut slices = &mut [IoSlice::new(&header), IoSlice::new(&raw)][..];
 
-        // Send the actual message next.
-        self.stream.write_all(&raw)?;
+        // Write the entire message to the stocket
+        while !slices.is_empty() {
+            let written = self.stream.write_vectored(slices)?;
+
+            if written == 0 {
+                return Err(io::Error::from(io::ErrorKind::WriteZero).into());
+            }
+
+            // Skip past whatever was written, in case the kernel accepted only part of it.
+            IoSlice::advance_slices(&mut slices, written);
+        }
 
         // Flush the buffer.
         self.stream.flush()?;
@@ -349,18 +338,4 @@ impl Drop for PwmpClient {
         // Shut down the socket
         let _ = self.stream.shutdown(Shutdown::Write);
     }
-}
-
-#[allow(clippy::needless_pass_by_value)] // Passing a reference to T causes this to break. Possibly because `ptr` becomes a double pointer?
-fn setsockopt<T, FD: AsRawFd>(fd: &FD, level: c_int, opt: c_int, value: T) -> io::Result<()> {
-    let (ptr, len) = ((&raw const value).cast(), mem::size_of::<T>());
-    let option_len = socklen_t::try_from(len)
-        .map_err(|_| io::Error::other("failed to convert usize to socklen_t"))?;
-    let err = unsafe { libc::setsockopt(fd.as_raw_fd(), level, opt, ptr, option_len) };
-
-    if err == 0 {
-        return Ok(());
-    }
-
-    Err(io::Error::last_os_error())
 }
