@@ -6,7 +6,7 @@ use consts::{
 use error::Error;
 pub use pwmp_msg;
 use pwmp_msg::{
-    aliases::{AirPressure, Humidity, Rssi},
+    aliases::{AirPressure, BatteryVoltage, Humidity, Rssi, Temperature},
     mac::Mac,
     request::Request,
     response::Response,
@@ -132,20 +132,20 @@ impl PwmpClient {
     #[allow(clippy::too_many_arguments)]
     pub fn post_measurements(
         &mut self,
-        temperature: f32,
+        temperature: Temperature,
         humidity: Humidity,
         air_pressure: Option<AirPressure>,
-        battery: f32,
-        cpu_temp: f32,
+        battery: BatteryVoltage,
+        cpu_temp: Temperature,
         wifi_ssid: &str,
         wifi_rssi: Rssi,
     ) -> Result<()> {
         self.send_request(Request::PostMeasurements {
-            temperature: celsius_to_decicelsius(temperature)?,
+            temperature,
             humidity,
             air_pressure,
-            battery: volts_to_millivolts(battery)?,
-            cpu_temp: celsius_to_decicelsius(cpu_temp)?,
+            battery,
+            cpu_temp,
             wifi_ssid: wifi_ssid.into(),
             wifi_rssi,
         })?;
@@ -405,26 +405,4 @@ impl PwmpClient {
     fn is_id_duplicate(&self, id: MsgId) -> bool {
         self.prev_id == Some(id)
     }
-}
-
-#[allow(clippy::cast_possible_truncation)]
-fn celsius_to_decicelsius(c: f32) -> Result<i16> {
-    let value = (c * 10.0).round();
-
-    if !value.is_finite() || value < f32::from(i16::MIN) || value > f32::from(i16::MAX) {
-        return Err(Error::IllegalValue(c));
-    }
-
-    Ok(value as i16)
-}
-
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn volts_to_millivolts(v: f32) -> Result<u16> {
-    let value = (v * 1000.0).round();
-
-    if !value.is_finite() || value < 0.0 || value > f32::from(u16::MAX) {
-        return Err(Error::IllegalValue(v));
-    }
-
-    Ok(value as u16)
 }
