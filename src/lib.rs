@@ -44,13 +44,6 @@ pub struct PwmpClient {
     /// IDs of previously received message.
     prev_id: Option<MsgId>,
 
-    /// Whether the session has been terminated.
-    ///
-    /// This is used internally to prevent a double-shutdown and/or close
-    /// when calling [`close_session()`](Self::close_session), where the [`Drop`]
-    /// implementation would attempt to shut down the socket again.
-    terminated: bool,
-
     /// A function capable of generating a new message ID.
     ///
     /// This may be a random number generator, or something else.
@@ -90,7 +83,6 @@ impl PwmpClient {
         Ok(Self {
             stream: socket,
             buffer: [0; RCV_BUFFER_SIZE],
-            terminated: false,
             prev_id: None,
             id_generator,
         })
@@ -271,6 +263,11 @@ impl PwmpClient {
 
     /// Terminates a session cleanly, by letting the server know that the session is done.
     ///
+    /// > **It's highly recommended to call this before the client is dropped. Otherwise the server will handle this as an uncleanly terminated session.**
+    ///
+    /// If `force` is `true`, the method will **not** wait for the server to close
+    /// the connection. _In most cases, this should be left `false`._
+    ///
     /// This method works by:
     /// 1. Sending a [`Request::Bye`] message.
     /// 2. Shutting down the write half of the connection.
@@ -279,17 +276,11 @@ impl PwmpClient {
     /// # Errors
     /// This method returns either generic I/O failiure related errors, or [`Error::UnprocessedBye`]
     /// if the server sent more than `0` bytes.
-    pub fn close_session(mut self) -> Result<()> {
-        self.end_session(true)
-    }
-
-    /// See [`close_session()`] for details.
-    fn end_session(&mut self, wait_for_eof: bool) -> Result<()> {
+    pub fn close_session(mut self, force: bool) -> Result<()> {
         self.send_request(Request::Bye)?;
         self.stream.shutdown(Shutdown::Write)?;
-        self.terminated = true;
 
-        if !wait_for_eof {
+        if force {
             return Ok(());
         }
 
@@ -413,19 +404,6 @@ impl PwmpClient {
 
     fn is_id_duplicate(&self, id: MsgId) -> bool {
         self.prev_id == Some(id)
-    }
-}
-
-impl Drop for PwmpClient {
-    fn drop(&mut self) {
-        if self.terminated {
-            // the session has been closed by close_session() or end_session()
-            return;
-        }
-
-        // We attempt to end the session without a blocking read.
-        // Error handling cannot be properly done here, so we silently ignore them.
-        let _ = self.end_session(false);
     }
 }
 
