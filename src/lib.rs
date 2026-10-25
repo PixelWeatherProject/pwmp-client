@@ -44,6 +44,13 @@ pub struct PwmpClient {
     /// IDs of previously received message.
     prev_id: Option<MsgId>,
 
+    /// Whether the session has been terminated.
+    ///
+    /// This is used internally to prevent a double-shutdown and/or close
+    /// when calling [`close_session()`](Self::close_session), where the [`Drop`]
+    /// implementation would attempt to shut down the socket again.
+    terminated: bool,
+
     /// A function capable of generating a new message ID.
     ///
     /// This may be a random number generator, or something else.
@@ -83,6 +90,7 @@ impl PwmpClient {
         Ok(Self {
             stream: socket,
             buffer: [0; RCV_BUFFER_SIZE],
+            terminated: false,
             prev_id: None,
             id_generator,
         })
@@ -261,6 +269,44 @@ impl PwmpClient {
         self.wait_for_ok()
     }
 
+    /// Terminates a session cleanly, by letting the server know that the session is done.
+    ///
+    /// This method works by:
+    /// 1. Sending a [`Request::Bye`] message.
+    /// 2. Shutting down the write half of the connection.
+    /// 3. Performing a [`TcpStream::read()`] and expecting `Ok(0)`.
+    ///
+    /// # Errors
+    /// This method returns either generic I/O failiure related errors, or [`Error::UnprocessedBye`]
+    /// if the server sent more than `0` bytes.
+    pub fn close_session(mut self) -> Result<()> {
+        self.end_session(true)
+    }
+
+    /// See [`close_session()`] for details.
+    fn end_session(&mut self, wait_for_eof: bool) -> Result<()> {
+        self.send_request(Request::Bye)?;
+        self.stream.shutdown(Shutdown::Write)?;
+        self.terminated = true;
+
+        if !wait_for_eof {
+            return Ok(());
+        }
+
+        // read and wait for no data returned, which means an EOF - server closed the connection
+        match self.stream.read(&mut self.buffer) {
+            Ok(0) => Ok(()),
+            Ok(read) => Err(Error::UnprocessedBye {
+                io_err: None,
+                read_count: read,
+            }),
+            Err(why) => Err(Error::UnprocessedBye {
+                io_err: Some(why),
+                read_count: 0,
+            }),
+        }
+    }
+
     /// Wait for the server to reply with an `Ok` message.
     ///
     /// # Errors
@@ -372,12 +418,14 @@ impl PwmpClient {
 
 impl Drop for PwmpClient {
     fn drop(&mut self) {
-        // Send the bye message.
-        // If the socket is already dead this will fail, but we can ignore that.
-        let _ = self.send_request(Request::Bye);
+        if self.terminated {
+            // the session has been closed by close_session() or end_session()
+            return;
+        }
 
-        // Shut down the socket
-        let _ = self.stream.shutdown(Shutdown::Write);
+        // We attempt to end the session without a blocking read.
+        // Error handling cannot be properly done here, so we silently ignore them.
+        let _ = self.end_session(false);
     }
 }
 

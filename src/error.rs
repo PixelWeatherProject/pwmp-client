@@ -41,7 +41,9 @@ pub enum Error {
     IllegalDiagArtifactTag,
 
     /// Diagnostic artifact content is empty or too large.
-    #[error("Diagnostic artifact size must be between 1 and {DIAG_DATA_MAX_LEN} bytes ({0} provided)")]
+    #[error(
+        "Diagnostic artifact size must be between 1 and {DIAG_DATA_MAX_LEN} bytes ({0} provided)"
+    )]
     IllegalDiagArtifactSize(usize),
 
     /// Requested update chunk size is too large.
@@ -91,8 +93,16 @@ pub enum Error {
     #[error("malformed response")]
     MalformedResponse,
 
+    /// Slice length does not match the expected array length
     #[error("Slice length does not match the expected array length: {0}")]
     ArrayFromSliceSizeMismatch(#[from] TryFromSliceError),
+
+    /// Server did not process session termination successfully.
+    #[error("Server did not process `Bye` message (read {read_count}, err {io_err:?})")]
+    UnprocessedBye {
+        io_err: Option<std::io::Error>,
+        read_count: usize,
+    },
 }
 
 impl Error {
