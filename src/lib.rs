@@ -17,7 +17,7 @@ use pwmp_msg::{
 use std::{
     io::{self, IoSlice, Read, Write},
     net::{Shutdown, TcpStream, ToSocketAddrs},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub(crate) type Result<T> = ::std::result::Result<T, Error>;
@@ -123,6 +123,36 @@ impl PwmpClient {
         };
 
         Ok(values)
+    }
+
+    /// Request the current date and time from the server in form of a UNIX epoch.
+    ///
+    /// Optionally, you can specify `compensate` as `true` to perform compensation
+    /// based on the time it took to complete the round-trip.
+    ///
+    /// The epoch is calculated on the server based on [`UNIX_EPOCH`](std::time::SystemTime::UNIX_EPOCH).
+    ///
+    /// # Errors
+    /// Generic I/O.
+    pub fn get_date_time(&mut self, compensate: bool) -> Result<u64> {
+        let start = compensate.then_some(Instant::now());
+
+        self.send_request(Request::GetDateTime)?;
+        let response = self.receive_response(None)?;
+
+        let Response::EpochTime(mut epoch) = response else {
+            return Err(Error::UnexpectedResponse {
+                expected: "EpochTime",
+                got: response,
+            });
+        };
+
+        if let Some(start) = start {
+            let elapsed = start.elapsed();
+            epoch += elapsed.as_secs();
+        }
+
+        Ok(epoch)
     }
 
     /// Post node measurements.
