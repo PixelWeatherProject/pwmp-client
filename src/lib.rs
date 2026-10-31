@@ -7,6 +7,7 @@ use error::Error;
 pub use pwmp_msg;
 use pwmp_msg::{
     aliases::{AirPressure, BatteryVoltage, Humidity, Rssi, Temperature},
+    artifact::Artifact,
     mac::Mac,
     request::Request,
     response::Response,
@@ -208,7 +209,7 @@ impl PwmpClient {
     pub fn send_diagnostic_data<S: Into<Box<str>>>(
         &mut self,
         tag: S,
-        content: Box<[u8]>,
+        content: Artifact,
     ) -> Result<()> {
         let tag: Box<str> = tag.into();
 
