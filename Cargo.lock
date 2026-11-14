@@ -55,7 +55,7 @@ dependencies = [
 [[package]]
 name = "pwmp-msg"
 version = "4.0.0"
-source = "git+https://github.com/PixelWeatherProject/pwmp-msg?branch=v4-2026#897741b51d22f1c57c62fdf544812ad572ec9b5f"
+source = "git+https://github.com/PixelWeatherProject/pwmp-msg?branch=v4-2026#527b342a087593431efef62ea991b49de327cd7d"
 dependencies = [
  "postcard",
  "serde",
