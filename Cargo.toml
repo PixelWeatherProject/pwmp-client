@@ -12,5 +12,4 @@ repository = "https://github.com/PixelWeatherProject/pwmp-client"
 
 [dependencies]
 pwmp-msg = { git = "https://github.com/PixelWeatherProject/pwmp-msg", branch = "v4-2026" }
-libc = { version = "0.2.191", default-features = false }
 thiserror = "2.0.21"
