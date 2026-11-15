@@ -6,9 +6,9 @@ use consts::{
 use error::Error;
 pub use pwmp_msg;
 use pwmp_msg::{
-    aliases::{AirPressure, BatteryVoltage, Humidity, Rssi, Temperature},
     artifact::Artifact,
     mac::Mac,
+    measurement::{HistoricMeasurement, MeasurementCollection},
     request::Request,
     response::Response,
     settings::NodeSettings,
@@ -160,26 +160,20 @@ impl PwmpClient {
     ///
     /// # Errors
     /// Generic I/O.
-    #[allow(clippy::too_many_arguments)]
-    pub fn post_measurements(
-        &mut self,
-        temperature: Temperature,
-        humidity: Humidity,
-        air_pressure: Option<AirPressure>,
-        battery: BatteryVoltage,
-        cpu_temp: Temperature,
-        wifi_ssid: &str,
-        wifi_rssi: Rssi,
-    ) -> Result<()> {
-        self.send_request(Request::PostMeasurements {
-            temperature,
-            humidity,
-            air_pressure,
-            battery,
-            cpu_temp,
-            wifi_ssid: wifi_ssid.into(),
-            wifi_rssi,
-        })?;
+    pub fn post_measurements(&mut self, data: MeasurementCollection) -> Result<()> {
+        self.send_request(Request::PostMeasurements(data))?;
+        self.wait_for_ok()
+    }
+
+    /// Post historic measurements.
+    ///
+    /// # Errors
+    /// Generic I/O.
+    pub fn post_historic_measurements<C>(&mut self, data: C) -> Result<()>
+    where
+        C: Into<Box<[HistoricMeasurement]>>,
+    {
+        self.send_request(Request::PostHistoricMeasurements(data.into()))?;
         self.wait_for_ok()
     }
 
