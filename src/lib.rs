@@ -13,6 +13,7 @@ use pwmp_msg::{
     response::Response,
     settings::NodeSettings,
     version::Version,
+    wlan_stats::WiFiStats,
     Message, MsgId,
 };
 use std::{
@@ -160,8 +161,15 @@ impl PwmpClient {
     ///
     /// # Errors
     /// Generic I/O.
-    pub fn post_measurements(&mut self, data: MeasurementCollection) -> Result<()> {
-        self.send_request(Request::PostMeasurements(data))?;
+    pub fn post_measurements(
+        &mut self,
+        data: MeasurementCollection,
+        wifi_stats: WiFiStats,
+    ) -> Result<()> {
+        self.send_request(Request::PostMeasurements {
+            measurements: data,
+            wifi_stats,
+        })?;
         self.wait_for_ok()
     }
 
